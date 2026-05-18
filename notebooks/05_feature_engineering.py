@@ -15,12 +15,15 @@
 # COMMAND ----------
 
 from pyspark.sql import functions as F
-from pyspark.ml import Pipeline
+from pyspark.sql.types import DoubleType
 from pyspark.ml.feature import StringIndexer, VectorAssembler
 from pyspark.ml.classification import RandomForestClassifier
 from pyspark.ml.evaluation import BinaryClassificationEvaluator, MulticlassClassificationEvaluator
-from pyspark.ml.functions import vector_to_array
 from datetime import datetime
+
+@F.udf(DoubleType())
+def prob_class1(v):
+    return float(v[1]) if v is not None else None
 
 dbutils.widgets.text("env", "poc")
 ENV     = dbutils.widgets.get("env")
@@ -86,26 +89,32 @@ print(f"Test : {test.count():,} fires (after {TRAIN_CUTOFF})")
 
 # COMMAND ----------
 
-centre_idx  = StringIndexer(inputCol="fire_centre",   outputCol="centre_idx",  handleInvalid="keep")
-cause_idx   = StringIndexer(inputCol="general_cause", outputCol="cause_idx",   handleInvalid="keep")
-season_idx  = StringIndexer(inputCol="season",        outputCol="season_idx",  handleInvalid="keep")
+# Fit each stage manually — more compatible with Spark Connect (serverless)
+centre_m = StringIndexer(inputCol="fire_centre",   outputCol="centre_idx",  handleInvalid="keep").fit(train)
+cause_m  = StringIndexer(inputCol="general_cause", outputCol="cause_idx",   handleInvalid="keep").fit(train)
+season_m = StringIndexer(inputCol="season",        outputCol="season_idx",  handleInvalid="keep").fit(train)
 
-assembler = VectorAssembler(
-    inputCols=["centre_idx", "cause_idx", "season_idx", "fire_month", "decade"],
-    outputCol="features"
-)
+def apply_stages(df):
+    df = centre_m.transform(df)
+    df = cause_m.transform(df)
+    df = season_m.transform(df)
+    return VectorAssembler(
+        inputCols=["centre_idx", "cause_idx", "season_idx", "fire_month", "decade"],
+        outputCol="features"
+    ).transform(df)
+
+train_t = apply_stages(train)
+test_t  = apply_stages(test)
 
 rf = RandomForestClassifier(
     labelCol="is_large_fire",
     featuresCol="features",
-    numTrees=100,
+    numTrees=50,
     maxDepth=6,
     maxBins=128,
     seed=42
 )
-
-pipeline = Pipeline(stages=[centre_idx, cause_idx, season_idx, assembler, rf])
-model    = pipeline.fit(train)
+model = rf.fit(train_t)
 print("Model trained.")
 
 # COMMAND ----------
@@ -113,7 +122,7 @@ print("Model trained.")
 
 # COMMAND ----------
 
-preds = model.transform(test)
+preds = model.transform(test_t)
 
 auc = BinaryClassificationEvaluator(
     labelCol="is_large_fire", rawPredictionCol="rawPrediction"
@@ -167,10 +176,10 @@ display(importance_df)
 
 # COMMAND ----------
 
-all_features = spark.table(f"{CATALOG}.ml.feature_store")
+all_features = apply_stages(spark.table(f"{CATALOG}.ml.feature_store"))
 scored = (
     model.transform(all_features)
-    .withColumn("prob_large_fire", vector_to_array(F.col("probability"))[1])
+    .withColumn("prob_large_fire", prob_class1(F.col("probability")))
     .select(
         "fire_id", "fire_year", "fire_centre", "general_cause",
         "season", "fire_month", "total_hectares", "size_class",
