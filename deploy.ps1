@@ -223,7 +223,8 @@ $tasks = @(
     @{ task_key = "bronze";       notebook_task = @{ notebook_path = "$NotebookBase/01_bronze_ingestion"; base_parameters = $envParam }; depends_on = @(@{ task_key = "setup" }) },
     @{ task_key = "silver";       notebook_task = @{ notebook_path = "$NotebookBase/02_silver_transform"; base_parameters = $envParam }; depends_on = @(@{ task_key = "bronze" }) },
     @{ task_key = "gold";         notebook_task = @{ notebook_path = "$NotebookBase/03_gold_analytics";   base_parameters = $envParam }; depends_on = @(@{ task_key = "silver" }) },
-    @{ task_key = "data_quality"; notebook_task = @{ notebook_path = "$NotebookBase/04_data_quality";     base_parameters = $envParam }; depends_on = @(@{ task_key = "gold" }) }
+    @{ task_key = "data_quality"; notebook_task = @{ notebook_path = "$NotebookBase/04_data_quality";     base_parameters = $envParam }; depends_on = @(@{ task_key = "gold" }) },
+    @{ task_key = "ml_features";  notebook_task = @{ notebook_path = "$NotebookBase/05_feature_engineering"; base_parameters = $envParam }; depends_on = @(@{ task_key = "data_quality" }) }
 )
 
 # Find and delete any existing job with the same name so we start fresh
