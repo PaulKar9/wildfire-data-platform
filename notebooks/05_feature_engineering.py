@@ -157,7 +157,7 @@ spark.createDataFrame(metrics_row) \
 
 # COMMAND ----------
 
-rf_model       = model.stages[-1]
+rf_model       = model
 feature_names  = ["fire_centre", "general_cause", "season", "fire_month", "decade"]
 importance_df  = spark.createDataFrame(
     [(name, float(imp)) for name, imp in zip(feature_names, rf_model.featureImportances.toArray())],
