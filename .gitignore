@@ -1,0 +1,33 @@
+# Credentials — never commit
+.databrickscfg
+*.token
+secrets/
+.env
+
+# Local deploy config overrides
+deploy.local.ps1
+destroy.local.ps1
+
+# Raw source data — large files, not version-controlled
+*.csv
+*.pdf
+*.zip
+*.xlsx
+
+# Claude Code session state
+.claude/
+
+# OS noise
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Editor
+.vscode/
+.idea/
+*.swp

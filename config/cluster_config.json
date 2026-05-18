@@ -1,0 +1,47 @@
+{
+  "_comment": "Cost-optimized single-node cluster for POC. Target: < $10 CAD total.",
+  "_cost_estimate": "~$0.10-0.20 CAD/hour on smallest paid tier. Full pipeline run ~2-3 hrs = $0.20-0.60 CAD. Community Edition = $0.",
+
+  "cluster_name": "wildfire-poc-single-node",
+  "spark_version": "14.3.x-scala2.12",
+  "node_type_id": "Standard_DS3_v2",
+  "_node_type_alternatives": {
+    "azure": "Standard_DS3_v2 (14GB, 4 core)",
+    "aws": "m5.xlarge (16GB, 4 core)",
+    "gcp": "n1-standard-4"
+  },
+  "num_workers": 0,
+  "spark_conf": {
+    "spark.databricks.cluster.profile": "singleNode",
+    "spark.master": "local[*, 4]",
+    "spark.sql.shuffle.partitions": "8",
+    "_comment_shuffle": "Default 200 is wasteful on small data; 8 matches core count"
+  },
+  "custom_tags": {
+    "project": "wildfire-poc",
+    "cost-centre": "fire-operations",
+    "environment": "poc"
+  },
+  "autotermination_minutes": 30,
+  "enable_elastic_disk": true,
+  "azure_attributes": {
+    "availability": "SPOT_WITH_FALLBACK_AZURE",
+    "_comment": "Spot instances reduce cost ~60-80%. Fallback to on-demand if no spot available."
+  },
+  "aws_attributes": {
+    "availability": "SPOT_WITH_FALLBACK",
+    "spot_bid_price_percent": 100
+  },
+  "spark_env_vars": {
+    "PYSPARK_PYTHON": "/databricks/python3/bin/python3"
+  },
+  "init_scripts": [],
+  "cluster_log_conf": {
+    "dbfs": {
+      "destination": "dbfs:/cluster-logs/wildfire-poc"
+    }
+  },
+
+  "_run_order_note": "Run notebooks in order: 00 → 01 → 02 → 03 → 04 → 05 (optional)",
+  "_community_edition_note": "Community Edition clusters auto-terminate after 2 hours and cannot be configured via JSON. Use the UI to set: Runtime=14.3LTS, Single Node, auto-terminate 120min."
+}
