@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Tear down a Wildfire Platform environment — drops catalog, workspace folder, and job.
     Does NOT touch the Git Folder (repo link) — that's shared across environments.

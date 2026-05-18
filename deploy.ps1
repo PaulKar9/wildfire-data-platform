@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
     Deploy the Wildfire Data Platform to a Databricks workspace environment.
 
@@ -52,7 +52,7 @@ function Invoke-DB {
             try {
                 $stream = $_.Exception.Response.GetResponseStream()
                 $reader = [System.IO.StreamReader]::new($stream)
-                $msg   += " — " + $reader.ReadToEnd()
+                $msg   += ": " + $reader.ReadToEnd()
             } catch {}
         }
         throw $msg
@@ -85,8 +85,11 @@ function Wait-ForRun {
     do {
         $r     = Invoke-DB -Ver "2.1" -Path "jobs/runs/get?run_id=$RunId"
         $state = $r.state.life_cycle_state
-        $tasks = $r.tasks | ForEach-Object { "  $($_.task_key.PadRight(15)) $($_.state.life_cycle_state) $($_.state.result_state)" }
-        Write-Host "`r$state — $(Get-Date -Format 'HH:mm:ss')" -NoNewline
+        $tasks = $r.tasks | ForEach-Object {
+            $rs = if ($_.state.PSObject.Properties["result_state"]) { $_.state.result_state } else { "" }
+            "  $($_.task_key.PadRight(15)) $($_.state.life_cycle_state) $rs"
+        }
+        Write-Host "`r$state - $(Get-Date -Format 'HH:mm:ss')" -NoNewline
         if ($state -notin @("PENDING","RUNNING","WAITING_FOR_RETRY")) { break }
         Start-Sleep -Seconds 12
     } while ($true)
@@ -125,7 +128,8 @@ if ($UseGitFolders) {
 
     # Store / update git credentials
     $existingCreds = Invoke-DB -Path "git-credentials"
-    $existingGh = $existingCreds.credentials | Where-Object { $_.git_provider -eq "gitHub" }
+    $credList   = if ($existingCreds.PSObject.Properties["credentials"]) { $existingCreds.credentials } else { @() }
+    $existingGh = $credList | Where-Object { $_.git_provider -eq "gitHub" }
     if ($existingGh) {
         Log "  Updating existing GitHub credential (id=$($existingGh.credential_id))..."
         Invoke-DB -Method PATCH -Path "git-credentials/$($existingGh.credential_id)" -Body @{
@@ -143,14 +147,21 @@ if ($UseGitFolders) {
     }
     Ok "  GitHub credentials stored."
 
+    # Resolve workspace user email for the Repos path
+    $me        = Invoke-DB -Path "preview/scim/v2/Me"
+    $wsEmail   = $me.emails | Where-Object { $_.primary -eq $true } | Select-Object -ExpandProperty value
+    if (-not $wsEmail) { $wsEmail = $me.userName }
+    Log "  Workspace user: $wsEmail"
+
     # Create or update the Git Folder (Repo)
     $repoUrl    = "https://github.com/$GitHubUser/$GitHubRepo"
-    $repoPath   = "/Repos/$GitHubUser/$GitHubRepo"
-    $existingRepos = Invoke-DB -Path "repos?path_prefix=/Repos/$GitHubUser"
-    $existing   = $existingRepos.repos | Where-Object { $_.path -eq $repoPath }
+    $repoPath   = "/Repos/$wsEmail/$GitHubRepo"
+    $existingRepos = Invoke-DB -Path "repos?path_prefix=/Repos/$wsEmail"
+    $repoList   = if ($existingRepos.PSObject.Properties["repos"]) { $existingRepos.repos } else { @() }
+    $existing   = $repoList | Where-Object { $_.path -eq $repoPath }
 
     if ($existing) {
-        Log "  Git Folder exists — checking out branch '$Branch'..."
+        Log "  Git Folder exists - checking out branch '$Branch'..."
         Invoke-DB -Method PATCH -Path "repos/$($existing.id)" -Body @{ branch = $Branch } | Out-Null
         $repoId = $existing.id
     } else {
@@ -192,7 +203,7 @@ if (-not $SkipDataUpload) {
     foreach ($src in $csvMap.Keys) {
         $local  = Join-Path $LocalRoot $src
         $remote = "$WsPath/data/$($csvMap[$src])"
-        if (-not (Test-Path $local)) { Warn "  Not found locally: $src — skipping."; continue }
+        if (-not (Test-Path $local)) { Warn "  Not found locally: $src - skipping."; continue }
         try {
             Upload-WorkspaceFile -LocalFile $local -RemotePath $remote
             Ok "  $($csvMap[$src])"
@@ -216,8 +227,9 @@ $tasks = @(
 )
 
 # Find and delete any existing job with the same name so we start fresh
-$existingJobs = (Invoke-DB -Ver "2.1" -Path "jobs/list").jobs
-$existing = $existingJobs | Where-Object { $_.settings.name -eq $JobName }
+$jobListResp  = Invoke-DB -Ver "2.1" -Path "jobs/list"
+$existingJobs = if ($jobListResp.PSObject.Properties["jobs"]) { $jobListResp.jobs } else { @() }
+$existing     = $existingJobs | Where-Object { $_.settings.name -eq $JobName }
 if ($existing) {
     Log "  Removing old job id=$($existing.job_id)..."
     Invoke-DB -Ver "2.1" -Method POST -Path "jobs/delete" -Body @{ job_id = $existing.job_id } | Out-Null
@@ -234,7 +246,7 @@ Ok "Job created: id=$($job.job_id)  name=$JobName"
 if ($RunPipeline) {
     Log "Triggering pipeline run..."
     $run = Invoke-DB -Ver "2.1" -Method POST -Path "jobs/run-now" -Body @{ job_id = $job.job_id }
-    Log "  Run id=$($run.run_id) — waiting..."
+    Log "  Run id=$($run.run_id) - waiting..."
     $result = Wait-ForRun -RunId $run.run_id
     if ($result -eq "SUCCESS") { Ok "Pipeline completed successfully." }
     else { Fail "Pipeline run ended with result: $result" }
