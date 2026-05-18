@@ -100,6 +100,7 @@ rf = RandomForestClassifier(
     featuresCol="features",
     numTrees=100,
     maxDepth=6,
+    maxBins=128,
     seed=42
 )
 
