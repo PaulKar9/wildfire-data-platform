@@ -44,7 +44,7 @@ function Invoke-DB {
 
 function Run-SQL {
     param([string]$Sql, [string]$WarehouseId)
-    $body = @{ statement = $Sql; warehouse_id = $WarehouseId; wait_timeout = "60s"; disposition = "INLINE"; format = "JSON_ARRAY" } | ConvertTo-Json -Depth 5
+    $body = @{ statement = $Sql; warehouse_id = $WarehouseId; wait_timeout = "50s"; disposition = "INLINE"; format = "JSON_ARRAY" } | ConvertTo-Json -Depth 5
     $resp = Invoke-RestMethod -Uri "$WorkspaceHost/api/2.0/sql/statements" -Headers $hdrs -Method POST -Body $body -ContentType "application/json"
     $id   = $resp.statement_id
     while ($resp.status.state -in @("PENDING","RUNNING")) {
@@ -82,7 +82,8 @@ try {
     $jobs = (Invoke-DB -Ver "2.1" -Path "jobs/list").jobs
     $job  = $jobs | Where-Object { $_.settings.name -eq $JobName }
     if ($job) {
-        $runs = (Invoke-DB -Ver "2.1" -Path "jobs/runs/list?job_id=$($job.job_id)&active_only=true").runs
+        $runResp = Invoke-DB -Ver "2.1" -Path "jobs/runs/list?job_id=$($job.job_id)&active_only=true"
+        $runs = if ($runResp.PSObject.Properties["runs"]) { $runResp.runs } else { @() }
         foreach ($run in $runs) {
             Invoke-DB -Ver "2.1" -Method POST -Path "jobs/runs/cancel" -Body @{ run_id = $run.run_id } | Out-Null
             Log "  Cancelled run $($run.run_id)"
